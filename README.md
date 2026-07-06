@@ -2,6 +2,8 @@
 
 [cite_start]An interactive, modeless pyRevit extension designed to search for and replace text across nearly any element category in your Revit model. [cite: 1, 2] [cite_start]This tool utilizes a custom WPF/XAML interface powered by a thread-safe Python execution environment to interact with the Revit database seamlessly without locking your application. [cite: 3, 77, 80]
 
+![Find and Replace Main Interface](docs/images/main_interface.png)
+
 ---
 
 ## Features
@@ -44,6 +46,12 @@ Because the extension is linked directly to GitHub via pyRevit, applying future 
 2. [cite_start]Select your target category using the radio buttons at the top of the window (e.g., Room Names, View Titles). [cite: 17, 98]
 3. Type your search string into the **Find** field. [cite_start]The DataGrid will instantly filter the list of elements as you type. [cite: 117]
 4. Type your desired replacement string into the **Replace** field. [cite_start]The "New Name" column will dynamically preview the changes with bold text formatting. [cite: 117, 120]
+
+![Live Text Preview Feature](docs/images/live_preview.png)
+
 5. [cite_start]*(Optional)* Check the **Match Case** box if you require strict capitalization matching. [cite: 53]
 6. [cite_start]*(Optional)* Right-click any row in the table to **Select** the element in the model or **Show** it in the active view. [cite: 54, 59] [cite_start]Note that attempting to "Show" non-physical elements (like Materials) will gracefully alert you that they do not exist in graphical views. [cite: 60]
+
+![Right-Click Context Menu](docs/images/context_menu.png)
+
 7. [cite_start]Click **Apply** to push the text replacements back into the Revit database. [cite: 22]
