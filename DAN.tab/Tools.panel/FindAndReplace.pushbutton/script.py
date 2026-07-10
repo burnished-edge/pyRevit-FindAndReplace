@@ -98,12 +98,20 @@ class FindReplaceWindow(WPFWindow):
                 temp_rows.append(self.ElementRow(sheet, sheet.Name, sheet.SheetNumber, DB.BuiltInParameter.SHEET_NUMBER))
                 
         elif category == "Room Names":
-            for room in DB.FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Rooms):
-                temp_rows.append(self.ElementRow(room, room.Number, room.Name, DB.BuiltInParameter.ROOM_NAME))
+            for room in DB.FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Rooms).WhereElementIsNotElementType():
+                r_num = room.get_Parameter(DB.BuiltInParameter.ROOM_NUMBER)
+                r_num_val = r_num.AsString() if r_num else ""
+                r_name = room.get_Parameter(DB.BuiltInParameter.ROOM_NAME)
+                r_name_val = r_name.AsString() if r_name else ""
+                temp_rows.append(self.ElementRow(room, r_num_val, r_name_val, DB.BuiltInParameter.ROOM_NAME))
 
         elif category == "Room Numbers":
-            for room in DB.FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Rooms):
-                temp_rows.append(self.ElementRow(room, room.Name, room.Number, DB.BuiltInParameter.ROOM_NUMBER))
+            for room in DB.FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Rooms).WhereElementIsNotElementType():
+                r_num = room.get_Parameter(DB.BuiltInParameter.ROOM_NUMBER)
+                r_num_val = r_num.AsString() if r_num else ""
+                r_name = room.get_Parameter(DB.BuiltInParameter.ROOM_NAME)
+                r_name_val = r_name.AsString() if r_name else ""
+                temp_rows.append(self.ElementRow(room, r_name_val, r_num_val, DB.BuiltInParameter.ROOM_NUMBER))
 
         elif category == "View Names":
             for view in DB.FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Views).WhereElementIsNotElementType():
@@ -179,7 +187,8 @@ class FindReplaceWindow(WPFWindow):
                     print("Failed to rename {} : {}".format(row.OriginalName, str(e)))
         
         forms.alert("Successfully updated {} elements.".format(success_count))
-        self.Dispatcher.Invoke(Action(self.Close))
+        # Keep window open and refresh the UI to show the newly updated names
+        self.execute_refresh()
 
 
     # ==========================================================
@@ -192,7 +201,7 @@ class FindReplaceWindow(WPFWindow):
         # UI System libraries for building rich text in python
         from System.Windows.Controls import TextBlock
         from System.Windows.Documents import Run
-        from System.Windows import FontWeights, VerticalAlignment
+        from System.Windows import FontWeights, VerticalAlignment, TextWrapping
         
         find_text = self.txtFind.Text
         replace_text = self.txtReplace.Text
@@ -222,6 +231,7 @@ class FindReplaceWindow(WPFWindow):
             # --- RICH TEXT GENERATION ---
             tb = TextBlock()
             tb.VerticalAlignment = VerticalAlignment.Center
+            tb.TextWrapping = TextWrapping.Wrap
             
             if prefix:
                 r = Run(format_case(prefix))
