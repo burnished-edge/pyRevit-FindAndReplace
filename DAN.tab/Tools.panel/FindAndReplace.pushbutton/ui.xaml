@@ -77,7 +77,7 @@
             </StackPanel>
         </Grid>
 
-        <DataGrid x:Name="dataGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" RowHeight="28">
+        <DataGrid x:Name="dataGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" MinRowHeight="28">
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow">
                     <Setter Property="ContextMenu">
