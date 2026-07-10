@@ -1,6 +1,6 @@
 # pyRevit Find and Replace Tool
 
-An interactive, modeless pyRevit extension designed to search for and replace text across nearly any element category in your Revit model. This tool utilizes a custom WPF/XAML interface powered by a thread-safe Python execution environment to interact with the Revit database without locking your application.
+An interactive, modeless pyRevit extension designed to search for and replace text across nearly any element category in your Revit model.
 
 ![Find and Replace Main Interface](docs/images/main_interface.png)
 
