@@ -92,8 +92,20 @@
             </DataGrid.RowStyle>
 
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="120" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Original Name" Binding="{Binding OriginalName}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="120" IsReadOnly="True">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="TextWrapping" Value="Wrap"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Original Name" Binding="{Binding OriginalName}" Width="*" IsReadOnly="True">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="TextWrapping" Value="Wrap"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
                 
                 <DataGridTemplateColumn Header="New Name" Width="*">
                     <DataGridTemplateColumn.CellTemplate>
