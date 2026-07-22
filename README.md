@@ -33,10 +33,7 @@ You can install this extension directly from this GitHub repository using pyRevi
 
 Because the extension is linked directly to GitHub via pyRevit, applying future updates requires the following steps. Whenever a new version or bug fix is pushed to this repository:
 
-1. Open the `pyRevit Extension Manager`.
-2. Locate the Find and Replace Tool in your installed list.
-3. Click `Update`. pyRevit will automatically pull the latest source code from GitHub and apply the changes. 
-4. Reload pyRevit to see the updates take effect.
+1. Click the `pyRevit` drop-down menu (small triangle icon next to "pyRevit") and select `Update`. pyRevit will pull the latest source code from GitHub and apply the changes.
 
 ---
 
