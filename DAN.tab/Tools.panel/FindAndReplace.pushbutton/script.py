@@ -1,11 +1,13 @@
-#! python3
+#! ipy3
 import clr
+import re
 clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
 
-from System import Object
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from pyrevit.forms import WPFWindow
+from System.Collections.ObjectModel import ObservableCollection
+from System import Action
 
 class WindowActionHandler(IExternalEventHandler):
     """Safely executes all Revit API calls on the Revit Main Thread"""
@@ -32,13 +34,12 @@ class WindowActionHandler(IExternalEventHandler):
 
 class FindReplaceWindow(WPFWindow):
     
-    # Inherit from .NET Object to ensure pythonnet exposes properties to WPF
-    class ElementRow(Object):
+    # NESTED CLASS: Survives the Garbage Collector because it belongs to the Window
+    class ElementRow(object):
+        """Custom class to bind data to the WPF DataGrid"""
         def __init__(self, element, ref_val, original_val, param_to_set):
             self.Element = element
             self.ParamToSet = param_to_set
-            
-            # Force values to strings during init to prevent NoneType errors in CPython
             self.Reference = str(ref_val) if ref_val is not None else ""
             self.OriginalName = str(original_val) if original_val is not None else ""
             
@@ -46,7 +47,6 @@ class FindReplaceWindow(WPFWindow):
             self._formattedName = None
             self._include = False
 
-        # Raw String (used by the Revit execution)
         @property
         def NewName(self):
             return self._newName
@@ -54,7 +54,6 @@ class FindReplaceWindow(WPFWindow):
         def NewName(self, value):
             self._newName = value
 
-        # Formatted WPF TextBlock (used by the UI)
         @property
         def FormattedNewName(self):
             return self._formattedName
@@ -143,7 +142,9 @@ class FindReplaceWindow(WPFWindow):
                 temp_rows.append(self.ElementRow(level, round(level.Elevation, 2), level.Name, "ELEMENT_NAME"))
 
         self.all_rows = temp_rows
-        self.update_preview()
+        
+        # In IronPython, we push the update via the WPF Dispatcher to keep threads safe
+        self.Dispatcher.Invoke(Action(self.update_preview))
 
     def execute_select(self):
         from pyrevit import DB, revit
@@ -190,7 +191,6 @@ class FindReplaceWindow(WPFWindow):
                     print("Failed to rename {} : {}".format(row.OriginalName, str(e)))
         
         forms.alert("Successfully updated {} elements.".format(success_count))
-        # Keep window open and refresh the UI to show the newly updated names
         self.execute_refresh()
 
 
@@ -198,32 +198,26 @@ class FindReplaceWindow(WPFWindow):
     # STANDARD UI METHODS (Run strictly on the WPF Thread)
     # ==========================================================
     def update_preview(self):
-        import re
-        from System.Collections.ObjectModel import ObservableCollection
-        
         # UI System libraries for building rich text in python
         from System.Windows.Controls import TextBlock
         from System.Windows.Documents import Run
         from System.Windows import FontWeights, VerticalAlignment, TextWrapping
         
-        # Explicitly cast WPF strings to Python strings for regex safety in CPython
-        find_text = str(self.txtFind.Text) if self.txtFind.Text else ""
-        replace_text = str(self.txtReplace.Text) if self.txtReplace.Text else ""
-        prefix = str(self.txtPrefix.Text) if self.txtPrefix.Text else ""
-        suffix = str(self.txtSuffix.Text) if self.txtSuffix.Text else ""
-        
-        capitalize = bool(self.chkCapitalize.IsChecked)
-        case_sensitive = bool(self.chkCaseSensitive.IsChecked)
+        find_text = self.txtFind.Text
+        replace_text = self.txtReplace.Text
+        prefix = self.txtPrefix.Text
+        suffix = self.txtSuffix.Text
+        capitalize = self.chkCapitalize.IsChecked
+        case_sensitive = self.chkCaseSensitive.IsChecked
 
-        # CPython pythonnet requires explicit System.Object reference for Observable Collections
-        display_list = ObservableCollection[Object]()
+        display_list = ObservableCollection[object]()
 
         def format_case(text):
-            return str(text).upper() if capitalize else str(text)
+            return text.upper() if capitalize else text
 
         for row in self.all_rows:
             row.Include = False 
-            new_val = str(row.OriginalName)
+            new_val = row.OriginalName
 
             # --- LIVE FILTERING LOGIC ---
             if find_text:
@@ -250,10 +244,10 @@ class FindReplaceWindow(WPFWindow):
                 pattern = re.compile(re.escape(find_text), flags)
                 
                 last_idx = 0
-                for match in pattern.finditer(new_val):
+                for match in pattern.finditer(row.OriginalName):
                     row.Include = True
                     
-                    before_text = new_val[last_idx:match.start()]
+                    before_text = row.OriginalName[last_idx:match.start()]
                     if before_text:
                         tb.Inlines.Add(Run(format_case(before_text)))
                     
@@ -264,13 +258,13 @@ class FindReplaceWindow(WPFWindow):
                     
                     last_idx = match.end()
                     
-                after_text = new_val[last_idx:]
+                after_text = row.OriginalName[last_idx:]
                 if after_text:
                     tb.Inlines.Add(Run(format_case(after_text)))
                     
                 new_val = pattern.sub(replace_text, new_val)
             else:
-                tb.Inlines.Add(Run(format_case(new_val)))
+                tb.Inlines.Add(Run(format_case(row.OriginalName)))
                 
             if suffix:
                 r = Run(format_case(suffix))
@@ -285,7 +279,9 @@ class FindReplaceWindow(WPFWindow):
             raw_string = format_case(prefix + new_val + suffix)
             row.NewName = raw_string
             
+            # Feed the WPF text block to the UI
             row.FormattedNewName = tb 
+            
             display_list.Add(row)
 
         self.dataGrid.ItemsSource = display_list
@@ -295,7 +291,7 @@ class FindReplaceWindow(WPFWindow):
     # ==========================================================
     def CategoryChanged(self, sender, args):
         if sender.IsChecked: 
-            self.current_category = str(sender.Content)
+            self.current_category = sender.Content.ToString()
             if hasattr(self, 'action_handler'): 
                 self.action_handler.action = "refresh"
                 self.ext_event.Raise()
