@@ -1,7 +1,9 @@
+#! python3
 import clr
 clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
 
+from System import Action, Object
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from pyrevit.forms import WPFWindow
 
@@ -30,10 +32,13 @@ class WindowActionHandler(IExternalEventHandler):
 
 class FindReplaceWindow(WPFWindow):
     
-    class ElementRow(object):
+    # Inherit from .NET Object to ensure pythonnet exposes properties to WPF
+    class ElementRow(Object):
         def __init__(self, element, ref_val, original_val, param_to_set):
             self.Element = element
             self.ParamToSet = param_to_set
+            
+            # Force values to strings during init to prevent NoneType errors in CPython
             self.Reference = str(ref_val) if ref_val is not None else ""
             self.OriginalName = str(original_val) if original_val is not None else ""
             
@@ -83,7 +88,6 @@ class FindReplaceWindow(WPFWindow):
     # ==========================================================
     def execute_refresh(self):
         from pyrevit import DB, revit
-        from System import Action
         doc = revit.doc
 
         temp_rows = []
@@ -166,7 +170,6 @@ class FindReplaceWindow(WPFWindow):
 
     def execute_apply(self):
         from pyrevit import revit, forms
-        from System import Action
         
         with revit.Transaction("Find and Replace"):
             success_count = 0
@@ -203,27 +206,30 @@ class FindReplaceWindow(WPFWindow):
         from System.Windows.Documents import Run
         from System.Windows import FontWeights, VerticalAlignment, TextWrapping
         
-        find_text = self.txtFind.Text
-        replace_text = self.txtReplace.Text
-        prefix = self.txtPrefix.Text
-        suffix = self.txtSuffix.Text
-        capitalize = self.chkCapitalize.IsChecked
-        case_sensitive = self.chkCaseSensitive.IsChecked
+        # Explicitly cast WPF strings to Python strings for regex safety in CPython
+        find_text = str(self.txtFind.Text) if self.txtFind.Text else ""
+        replace_text = str(self.txtReplace.Text) if self.txtReplace.Text else ""
+        prefix = str(self.txtPrefix.Text) if self.txtPrefix.Text else ""
+        suffix = str(self.txtSuffix.Text) if self.txtSuffix.Text else ""
+        
+        capitalize = bool(self.chkCapitalize.IsChecked)
+        case_sensitive = bool(self.chkCaseSensitive.IsChecked)
 
-        display_list = ObservableCollection[object]()
+        # CPython pythonnet requires explicit System.Object reference for Observable Collections
+        display_list = ObservableCollection[Object]()
 
         def format_case(text):
-            return text.upper() if capitalize else text
+            return str(text).upper() if capitalize else str(text)
 
         for row in self.all_rows:
             row.Include = False 
-            new_val = row.OriginalName
+            new_val = str(row.OriginalName)
 
             # --- LIVE FILTERING LOGIC ---
             if find_text:
                 if case_sensitive:
                     if find_text not in new_val:
-                        continue # Skip appending this row to the display list entirely
+                        continue 
                 else:
                     if find_text.lower() not in new_val.lower():
                         continue 
@@ -244,15 +250,13 @@ class FindReplaceWindow(WPFWindow):
                 pattern = re.compile(re.escape(find_text), flags)
                 
                 last_idx = 0
-                for match in pattern.finditer(row.OriginalName):
+                for match in pattern.finditer(new_val):
                     row.Include = True
                     
-                    # Unbolded original text before the match
-                    before_text = row.OriginalName[last_idx:match.start()]
+                    before_text = new_val[last_idx:match.start()]
                     if before_text:
                         tb.Inlines.Add(Run(format_case(before_text)))
                     
-                    # Bolded Replacement text
                     if replace_text:
                         r = Run(format_case(replace_text))
                         r.FontWeight = FontWeights.Bold
@@ -260,15 +264,13 @@ class FindReplaceWindow(WPFWindow):
                     
                     last_idx = match.end()
                     
-                # Unbolded remaining text after the final match
-                after_text = row.OriginalName[last_idx:]
+                after_text = new_val[last_idx:]
                 if after_text:
                     tb.Inlines.Add(Run(format_case(after_text)))
                     
-                # Store the background string for Revit
                 new_val = pattern.sub(replace_text, new_val)
             else:
-                tb.Inlines.Add(Run(format_case(row.OriginalName)))
+                tb.Inlines.Add(Run(format_case(new_val)))
                 
             if suffix:
                 r = Run(format_case(suffix))
@@ -283,9 +285,7 @@ class FindReplaceWindow(WPFWindow):
             raw_string = format_case(prefix + new_val + suffix)
             row.NewName = raw_string
             
-            # Feed the WPF text block to the UI
             row.FormattedNewName = tb 
-            
             display_list.Add(row)
 
         self.dataGrid.ItemsSource = display_list
@@ -295,7 +295,7 @@ class FindReplaceWindow(WPFWindow):
     # ==========================================================
     def CategoryChanged(self, sender, args):
         if sender.IsChecked: 
-            self.current_category = sender.Content.ToString()
+            self.current_category = str(sender.Content)
             if hasattr(self, 'action_handler'): 
                 self.action_handler.action = "refresh"
                 self.ext_event.Raise()
