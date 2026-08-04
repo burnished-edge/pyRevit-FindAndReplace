@@ -3,7 +3,7 @@ import clr
 clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
 
-from System import Action, Object
+from System import Object
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from pyrevit.forms import WPFWindow
 
@@ -143,7 +143,7 @@ class FindReplaceWindow(WPFWindow):
                 temp_rows.append(self.ElementRow(level, round(level.Elevation, 2), level.Name, "ELEMENT_NAME"))
 
         self.all_rows = temp_rows
-        self.Dispatcher.Invoke(Action(self.update_preview))
+        self.update_preview()
 
     def execute_select(self):
         from pyrevit import DB, revit
