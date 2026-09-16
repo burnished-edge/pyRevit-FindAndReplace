@@ -1,13 +1,27 @@
 #! ipy3
+# Keep the Python runtime alive so modeless events and imports do not get destroyed
+__persistentengine__ = True
+
 import clr
 import re
+
 clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
+clr.AddReference('PresentationCore')
+clr.AddReference('PresentationFramework')
+clr.AddReference('WindowsBase')
+
+from System import Action
+from System.Collections.ObjectModel import ObservableCollection
+from System.Collections.Generic import List
+from System.Windows.Controls import TextBlock
+from System.Windows.Documents import Run
+from System.Windows import FontWeights, VerticalAlignment, TextWrapping
 
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from pyrevit.forms import WPFWindow
-from System.Collections.ObjectModel import ObservableCollection
-from System import Action
+from pyrevit import DB, revit, forms, HOST_APP
+
 
 class WindowActionHandler(IExternalEventHandler):
     """Safely executes all Revit API calls on the Revit Main Thread"""
@@ -34,15 +48,13 @@ class WindowActionHandler(IExternalEventHandler):
 
 class FindReplaceWindow(WPFWindow):
     
-    # NESTED CLASS: Survives the Garbage Collector because it belongs to the Window
     class ElementRow(object):
-        """Custom class to bind data to the WPF DataGrid"""
+        """Data binding model for the WPF DataGrid"""
         def __init__(self, element, ref_val, original_val, param_to_set):
             self.Element = element
             self.ParamToSet = param_to_set
             self.Reference = str(ref_val) if ref_val is not None else ""
             self.OriginalName = str(original_val) if original_val is not None else ""
-            
             self._newName = self.OriginalName
             self._formattedName = None
             self._include = False
@@ -50,6 +62,7 @@ class FindReplaceWindow(WPFWindow):
         @property
         def NewName(self):
             return self._newName
+
         @NewName.setter
         def NewName(self, value):
             self._newName = value
@@ -57,6 +70,7 @@ class FindReplaceWindow(WPFWindow):
         @property
         def FormattedNewName(self):
             return self._formattedName
+
         @FormattedNewName.setter
         def FormattedNewName(self, value):
             self._formattedName = value
@@ -64,10 +78,10 @@ class FindReplaceWindow(WPFWindow):
         @property
         def Include(self):
             return self._include
+
         @Include.setter
         def Include(self, value):
             self._include = value
-
 
     def __init__(self, xaml_file_name):
         WPFWindow.__init__(self, xaml_file_name)
@@ -82,13 +96,26 @@ class FindReplaceWindow(WPFWindow):
         
         self.execute_refresh()
 
+    def _get_doc(self):
+        try:
+            from pyrevit import revit
+            return revit.doc
+        except Exception:
+            return HOST_APP.doc
+
+    def _get_uidoc(self):
+        try:
+            from pyrevit import revit
+            return revit.uidoc
+        except Exception:
+            return HOST_APP.uidoc
+
     # ==========================================================
     # SAFE REVIT API EXECUTION METHODS 
     # ==========================================================
     def execute_refresh(self):
-        from pyrevit import DB, revit
-        doc = revit.doc
-
+        from pyrevit import DB
+        doc = self._get_doc()
         temp_rows = []
         category = self.current_category
         
@@ -142,15 +169,11 @@ class FindReplaceWindow(WPFWindow):
                 temp_rows.append(self.ElementRow(level, round(level.Elevation, 2), level.Name, "ELEMENT_NAME"))
 
         self.all_rows = temp_rows
-        
-        # In IronPython, we push the update via the WPF Dispatcher to keep threads safe
         self.Dispatcher.Invoke(Action(self.update_preview))
 
     def execute_select(self):
-        from pyrevit import DB, revit
-        from System.Collections.Generic import List
-        uidoc = revit.uidoc
-
+        from pyrevit import DB
+        uidoc = self._get_uidoc()
         if self.selected_element_id:
             try:
                 id_list = List[DB.ElementId]()
@@ -160,9 +183,7 @@ class FindReplaceWindow(WPFWindow):
                 pass 
 
     def execute_show(self):
-        from pyrevit import revit
-        uidoc = revit.uidoc
-
+        uidoc = self._get_uidoc()
         if self.selected_element_id:
             try:
                 uidoc.ShowElements(self.selected_element_id)
@@ -171,7 +192,6 @@ class FindReplaceWindow(WPFWindow):
 
     def execute_apply(self):
         from pyrevit import revit, forms
-        
         with revit.Transaction("Find and Replace"):
             success_count = 0
             for row in self.rows_to_process:
@@ -193,16 +213,10 @@ class FindReplaceWindow(WPFWindow):
         forms.alert("Successfully updated {} elements.".format(success_count))
         self.execute_refresh()
 
-
     # ==========================================================
-    # STANDARD UI METHODS (Run strictly on the WPF Thread)
+    # STANDARD UI METHODS (Run on WPF Thread)
     # ==========================================================
     def update_preview(self):
-        # UI System libraries for building rich text in python
-        from System.Windows.Controls import TextBlock
-        from System.Windows.Documents import Run
-        from System.Windows import FontWeights, VerticalAlignment, TextWrapping
-        
         find_text = self.txtFind.Text
         replace_text = self.txtReplace.Text
         prefix = self.txtPrefix.Text
@@ -219,7 +233,7 @@ class FindReplaceWindow(WPFWindow):
             row.Include = False 
             new_val = row.OriginalName
 
-            # --- LIVE FILTERING LOGIC ---
+            # Live Filtering
             if find_text:
                 if case_sensitive:
                     if find_text not in new_val:
@@ -228,7 +242,7 @@ class FindReplaceWindow(WPFWindow):
                     if find_text.lower() not in new_val.lower():
                         continue 
             
-            # --- RICH TEXT GENERATION ---
+            # Rich Text Preview
             tb = TextBlock()
             tb.VerticalAlignment = VerticalAlignment.Center
             tb.TextWrapping = TextWrapping.Wrap
@@ -275,13 +289,8 @@ class FindReplaceWindow(WPFWindow):
             if capitalize and new_val != new_val.upper():
                 row.Include = True
 
-            # Calculate raw string for the Revit database commit
-            raw_string = format_case(prefix + new_val + suffix)
-            row.NewName = raw_string
-            
-            # Feed the WPF text block to the UI
+            row.NewName = format_case(prefix + new_val + suffix)
             row.FormattedNewName = tb 
-            
             display_list.Add(row)
 
         self.dataGrid.ItemsSource = display_list
@@ -327,6 +336,7 @@ class FindReplaceWindow(WPFWindow):
         if hasattr(self, 'action_handler'):
             self.action_handler.action = "apply"
             self.ext_event.Raise()
+
 
 __window__ = FindReplaceWindow('ui.xaml')
 __window__.Show()
