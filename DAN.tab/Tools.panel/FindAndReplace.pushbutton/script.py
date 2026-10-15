@@ -11,12 +11,13 @@ clr.AddReference('PresentationCore')
 clr.AddReference('PresentationFramework')
 clr.AddReference('WindowsBase')
 
-from System import Action
+from System import Action, TimeSpan
 from System.Collections.ObjectModel import ObservableCollection
 from System.Collections.Generic import List
 from System.Windows.Controls import TextBlock
 from System.Windows.Documents import Run
 from System.Windows import FontWeights, VerticalAlignment, TextWrapping
+from System.Windows.Threading import DispatcherTimer
 
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from pyrevit.forms import WPFWindow
@@ -81,7 +82,7 @@ class FindReplaceWindow(WPFWindow):
 
         @Include.setter
         def Include(self, value):
-            self._include = value
+            self._include = bool(value)
 
     def __init__(self, xaml_file_name):
         WPFWindow.__init__(self, xaml_file_name)
@@ -91,6 +92,11 @@ class FindReplaceWindow(WPFWindow):
         self.selected_element_id = None
         self.current_category = "Sheet Names" 
         
+        # Debounce timer for smooth typing
+        self.debounce_timer = DispatcherTimer()
+        self.debounce_timer.Interval = TimeSpan.FromMilliseconds(200)
+        self.debounce_timer.Tick += self.on_debounce_tick
+
         self.action_handler = WindowActionHandler(self)
         self.ext_event = ExternalEvent.Create(self.action_handler)
         
@@ -218,9 +224,9 @@ class FindReplaceWindow(WPFWindow):
     # ==========================================================
     def update_preview(self):
         find_text = self.txtFind.Text
-        replace_text = self.txtReplace.Text
-        prefix = self.txtPrefix.Text
-        suffix = self.txtSuffix.Text
+        replace_text = self.txtReplace.Text or ""
+        prefix = self.txtPrefix.Text or ""
+        suffix = self.txtSuffix.Text or ""
         capitalize = self.chkCapitalize.IsChecked
         case_sensitive = self.chkCaseSensitive.IsChecked
 
@@ -229,17 +235,24 @@ class FindReplaceWindow(WPFWindow):
         def format_case(text):
             return text.upper() if capitalize else text
 
+        # Pre-compile regex once per preview update rather than once per row
+        pattern = None
+        if find_text:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            pattern = re.compile(re.escape(find_text), flags)
+
         for row in self.all_rows:
+            orig = row.OriginalName
             row.Include = False 
-            new_val = row.OriginalName
+            new_val = orig
 
             # Live Filtering
             if find_text:
                 if case_sensitive:
-                    if find_text not in new_val:
+                    if find_text not in orig:
                         continue 
                 else:
-                    if find_text.lower() not in new_val.lower():
+                    if find_text.lower() not in orig.lower():
                         continue 
             
             # Rich Text Preview
@@ -253,15 +266,12 @@ class FindReplaceWindow(WPFWindow):
                 tb.Inlines.Add(r)
                 row.Include = True
                 
-            if find_text:
-                flags = 0 if case_sensitive else re.IGNORECASE
-                pattern = re.compile(re.escape(find_text), flags)
-                
+            if pattern:
                 last_idx = 0
-                for match in pattern.finditer(row.OriginalName):
+                for match in pattern.finditer(orig):
                     row.Include = True
                     
-                    before_text = row.OriginalName[last_idx:match.start()]
+                    before_text = orig[last_idx:match.start()]
                     if before_text:
                         tb.Inlines.Add(Run(format_case(before_text)))
                     
@@ -272,13 +282,13 @@ class FindReplaceWindow(WPFWindow):
                     
                     last_idx = match.end()
                     
-                after_text = row.OriginalName[last_idx:]
+                after_text = orig[last_idx:]
                 if after_text:
                     tb.Inlines.Add(Run(format_case(after_text)))
                     
-                new_val = pattern.sub(replace_text, new_val)
+                new_val = pattern.sub(replace_text, orig)
             else:
-                tb.Inlines.Add(Run(format_case(row.OriginalName)))
+                tb.Inlines.Add(Run(format_case(orig)))
                 
             if suffix:
                 r = Run(format_case(suffix))
@@ -306,6 +316,12 @@ class FindReplaceWindow(WPFWindow):
                 self.ext_event.Raise()
 
     def InputChanged(self, sender, args):
+        if hasattr(self, 'debounce_timer'):
+            self.debounce_timer.Stop()
+            self.debounce_timer.Start()
+
+    def on_debounce_tick(self, sender, args):
+        self.debounce_timer.Stop()
         if hasattr(self, 'all_rows'):
             self.update_preview()
             
@@ -327,7 +343,16 @@ class FindReplaceWindow(WPFWindow):
 
     def ApplyChanges(self, sender, args):
         from pyrevit import forms
-        self.rows_to_process = [row for row in self.dataGrid.ItemsSource if row.Include]
+        # Force any pending debounce updates to finish first
+        if hasattr(self, 'debounce_timer') and self.debounce_timer.IsEnabled:
+            self.debounce_timer.Stop()
+            self.update_preview()
+
+        # Commit any active cell and row checkbox edits
+        self.dataGrid.CommitEdit()
+        self.dataGrid.CommitEdit()
+        
+        self.rows_to_process = [row for row in self.dataGrid.ItemsSource if row.Include is True]
         
         if not self.rows_to_process:
             forms.alert("No elements selected to change.")
